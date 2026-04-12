@@ -146,6 +146,45 @@ app.get("/seed", async (req, res) => {
   }
 });
 
+
+// ================= BOOKINGS =================
+
+const Booking = mongoose.model("Booking", {
+  userEmail: String,
+  doctorName: String,
+  date: String,
+  time: String,
+});
+
+// CREATE BOOKING
+app.post("/api/book", async (req, res) => {
+  try {
+    const { userEmail, doctorName, date, time } = req.body;
+
+    const booking = new Booking({
+      userEmail,
+      doctorName,
+      date,
+      time,
+    });
+
+    await booking.save();
+
+    res.json({ message: "Booking সফল ✅" });
+  } catch (err) {
+    res.status(500).json({ message: "Booking error" });
+  }
+});
+
+// GET USER BOOKINGS
+app.get("/api/my-bookings/:email", async (req, res) => {
+  const bookings = await Booking.find({
+    userEmail: req.params.email,
+  });
+
+  res.json(bookings);
+});
+
 // ================= SERVER START =================
 const PORT = process.env.PORT || 5000;
 
