@@ -1,3 +1,5 @@
+require("dotenv").config();
+
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -6,25 +8,32 @@ const jwt = require("jsonwebtoken");
 
 const app = express();
 
-app.use(cors());
+// ================= MIDDLEWARE =================
 app.use(express.json());
 
-// 🔗 MongoDB connect
-mongoose
-  .connect(
-    "mongodb://Tsharun:Tsharun26@ac-x2kwtsi-shard-00-00.hlaqmbz.mongodb.net:27017,ac-x2kwtsi-shard-00-01.hlaqmbz.mongodb.net:27017,ac-x2kwtsi-shard-00-02.hlaqmbz.mongodb.net:27017/?ssl=true&replicaSet=atlas-2dlxa7-shard-0&authSource=admin&appName=Cluster0shebasathi",
-  )
-  .then(() => console.log("MongoDB Connected ✅"))
-  .catch((err) => console.log(err));
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "https://your-frontend.vercel.app"
+    ],
+    credentials: true,
+  })
+);
 
-// 🔥 User Schema
+// ================= MONGODB CONNECT =================
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("MongoDB Connected ✅"))
+  .catch((err) => console.log("MongoDB Error ❌", err));
+
+// ================= SCHEMAS =================
 const User = mongoose.model("User", {
   name: String,
   email: String,
   password: String,
 });
 
-// 🔥 Doctor Schema
 const Doctor = mongoose.model("Doctor", {
   name: String,
   department: String,
@@ -32,68 +41,114 @@ const Doctor = mongoose.model("Doctor", {
   fee: Number,
 });
 
-// ================== AUTH ==================
+// ================= BASIC ROUTE =================
+app.get("/", (req, res) => {
+  res.send("ShebaSathi Backend is running 🚀");
+});
+
+app.get("/api/health", (req, res) => {
+  res.json({
+    success: true,
+    message: "Backend is healthy 🚀",
+  });
+});
+
+// ================= AUTH =================
 
 // REGISTER
 app.post("/api/auth/register", async (req, res) => {
-  const { name, email, password } = req.body;
+  try {
+    const { name, email, password } = req.body;
 
-  const hashed = await bcrypt.hash(password, 10);
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: "User already exists" });
+    }
 
-  const user = new User({ name, email, password: hashed });
-  await user.save();
+    const hashed = await bcrypt.hash(password, 10);
 
-  res.json({ message: "Registered" });
+    const user = new User({
+      name,
+      email,
+      password: hashed,
+    });
+
+    await user.save();
+
+    res.json({ message: "Registered successfully ✅" });
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
 });
 
 // LOGIN
 app.post("/api/auth/login", async (req, res) => {
-  const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-  const user = await User.findOne({ email });
-  if (!user) return res.status(400).json({ message: "User not found" });
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ message: "User not found" });
 
-  const match = await bcrypt.compare(password, user.password);
-  if (!match) return res.status(400).json({ message: "Wrong password" });
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(400).json({ message: "Wrong password" });
 
-  const token = jwt.sign({ id: user._id }, "secret");
+    const token = jwt.sign(
+      { id: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
 
-  res.json({
-    token,
-    user: {
-      name: user.name,
-      email: user.email,
-    },
-  });
+    res.json({
+      token,
+      user: {
+        name: user.name,
+        email: user.email,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
 });
 
-// ================== DOCTORS ==================
-
+// ================= DOCTORS =================
 app.get("/api/doctors", async (req, res) => {
-  const doctors = await Doctor.find();
-  res.json(doctors);
+  try {
+    const doctors = await Doctor.find();
+    res.json(doctors);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching doctors" });
+  }
 });
 
-// TEST DATA INSERT
+// SEED DATA
 app.get("/seed", async (req, res) => {
-  await Doctor.insertMany([
-    {
-      name: "ডা. রহমান",
-      department: "কার্ডিওলজি",
-      hospital: "ঢাকা মেডিকেল",
-      fee: 500,
-    },
-    {
-      name: "ডা. করিম",
-      department: "নিউরোলজি",
-      hospital: "স্কয়ার হাসপাতাল",
-      fee: 800,
-    },
-  ]);
+  try {
+    await Doctor.deleteMany();
 
-  res.send("Seed Done");
+    await Doctor.insertMany([
+      {
+        name: "ডা. রহমান",
+        department: "কার্ডিওলজি",
+        hospital: "ঢাকা মেডিকেল",
+        fee: 500,
+      },
+      {
+        name: "ডা. করিম",
+        department: "নিউরোলজি",
+        hospital: "স্কয়ার হাসপাতাল",
+        fee: 800,
+      },
+    ]);
+
+    res.send("Seed Done ✅");
+  } catch (err) {
+    res.status(500).send("Seed Error ❌");
+  }
 });
 
-// ===========================================
+// ================= SERVER START =================
+const PORT = process.env.PORT || 5000;
 
-app.listen(5000, () => console.log("Server running"));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT} 🚀`);
+});
