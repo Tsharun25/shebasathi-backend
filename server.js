@@ -11,7 +11,6 @@ const app = express();
 // ================= MIDDLEWARE =================
 app.use(express.json());
 
-// ✅ CORS FIX (Production Ready)
 const allowedOrigins = [
   "http://localhost:3000",
   "https://shebasathi-next.vercel.app",
@@ -21,11 +20,10 @@ app.use(
   cors({
     origin: function (origin, callback) {
       if (!origin) return callback(null, true);
-
       if (allowedOrigins.includes(origin)) {
-        callback(null, true);
+        return callback(null, true);
       } else {
-        callback(new Error("CORS blocked ❌"));
+        return callback(new Error("Not allowed by CORS"));
       }
     },
     credentials: true,
@@ -44,6 +42,7 @@ mongoose
 const User = mongoose.model("User", {
   name: String,
   email: String,
+  phone: String,
   password: String,
 });
 
@@ -55,41 +54,46 @@ const Doctor = mongoose.model("Doctor", {
   fee: Number,
 });
 
-// BOOKING (UPDATED ✅)
+// BOOKING
 const Booking = mongoose.model("Booking", {
   userEmail: String,
   doctorId: String,
   doctorName: String,
   date: String,
   time: String,
-  status: {
-    type: String,
-    default: "pending",
-  },
 });
 
-// ================= BASIC ROUTE =================
+// ================= BASIC =================
+
 app.get("/", (req, res) => {
-  res.send("ShebaSathi Backend is running 🚀");
+  res.send("Backend running 🚀");
 });
 
 app.get("/api/health", (req, res) => {
-  res.json({
-    success: true,
-    message: "Backend is healthy 🚀",
-  });
+  res.json({ success: true });
 });
 
 // ================= AUTH =================
 
-// REGISTER (mobile/email optional logic ready)
+// REGISTER
 app.post("/api/auth/register", async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, phone, password } = req.body;
 
-    const existingUser = await User.findOne({ email });
+    if (!phone && !email) {
+      return res
+        .status(400)
+        .json({ message: "মোবাইল অথবা ইমেইল দিন" });
+    }
+
+    const existingUser = await User.findOne({
+      $or: [{ email }, { phone }],
+    });
+
     if (existingUser) {
-      return res.status(400).json({ message: "User already exists" });
+      return res.status(400).json({
+        message: "এই ইউজার আগে থেকেই আছে",
+      });
     }
 
     const hashed = await bcrypt.hash(password, 10);
@@ -97,39 +101,45 @@ app.post("/api/auth/register", async (req, res) => {
     const user = new User({
       name,
       email,
+      phone,
       password: hashed,
     });
 
     await user.save();
 
-    res.json({ message: "Registered successfully ✅" });
+    res.json({ message: "রেজিস্টার সফল ✅" });
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// LOGIN
+// LOGIN (phone/email)
 app.post("/api/auth/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { identifier, password } = req.body;
 
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: "User not found" });
+    const user = await User.findOne({
+      $or: [{ email: identifier }, { phone: identifier }],
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "User not found" });
+    }
 
     const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.status(400).json({ message: "Wrong password" });
 
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    if (!match) {
+      return res.status(400).json({ message: "Wrong password" });
+    }
+
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
 
     res.json({
       token,
       user: {
         name: user.name,
         email: user.email,
+        phone: user.phone,
       },
     });
   } catch (err) {
@@ -139,45 +149,39 @@ app.post("/api/auth/login", async (req, res) => {
 
 // ================= DOCTORS =================
 
-// GET ALL DOCTORS
+// GET ALL DOCTORS (DB থেকে আসবে ✅)
 app.get("/api/doctors", async (req, res) => {
   try {
     const doctors = await Doctor.find();
     res.json(doctors);
-  } catch (err) {
+  } catch {
     res.status(500).json({ message: "Error fetching doctors" });
   }
 });
 
-// SEED DATA
+// SEED (only run once)
 app.get("/seed", async (req, res) => {
   try {
     await Doctor.deleteMany();
 
     await Doctor.insertMany([
       {
-        name: "ডা. মোঃ রহমান",
+        name: "ডা. রহমান",
         department: "কার্ডিওলজি",
-        hospital: "ঢাকা মেডিকেল কলেজ",
-        fee: 1000,
+        hospital: "ঢাকা মেডিকেল",
+        fee: 500,
       },
       {
-        name: "ডা. নুসরাত জাহান",
+        name: "ডা. করিম",
         department: "নিউরোলজি",
-        hospital: "এপোলো হাসপাতাল",
+        hospital: "স্কয়ার হাসপাতাল",
         fee: 800,
-      },
-      {
-        name: "ডা. তানভীর হাসান",
-        department: "মেডিসিন",
-        hospital: "ল্যাবএইড",
-        fee: 900,
       },
     ]);
 
-    res.send("Doctors Added ✅");
-  } catch (err) {
-    res.status(500).send("Seed Error ❌");
+    res.send("Doctor DB Seeded ✅");
+  } catch {
+    res.status(500).send("Seed error");
   }
 });
 
@@ -186,10 +190,20 @@ app.get("/seed", async (req, res) => {
 // CREATE BOOKING
 app.post("/api/book", async (req, res) => {
   try {
-    const { userEmail, doctorId, doctorName, date, time } = req.body;
+    const { userEmail, doctorId, doctorName, date, time } =
+      req.body;
 
-    if (!date || !time) {
-      return res.status(400).json({ message: "তারিখ ও সময় দিন" });
+    // ❗ prevent duplicate slot booking
+    const exists = await Booking.findOne({
+      doctorId,
+      date,
+      time,
+    });
+
+    if (exists) {
+      return res.json({
+        message: "এই সময় ইতিমধ্যে বুকড ❌",
+      });
     }
 
     const booking = new Booking({
@@ -203,27 +217,24 @@ app.post("/api/book", async (req, res) => {
     await booking.save();
 
     res.json({ message: "বুকিং সফল ✅" });
-  } catch (err) {
-    res.status(500).json({ message: "Booking error ❌" });
+  } catch {
+    res.status(500).json({ message: "Booking error" });
   }
 });
 
-// USER BOOKINGS
+// GET USER BOOKINGS
 app.get("/api/my-bookings/:email", async (req, res) => {
-  try {
-    const bookings = await Booking.find({
-      userEmail: req.params.email,
-    });
+  const bookings = await Booking.find({
+    userEmail: req.params.email,
+  });
 
-    res.json(bookings);
-  } catch (err) {
-    res.status(500).json({ message: "Error loading bookings" });
-  }
+  res.json(bookings);
 });
 
 // ================= SERVER =================
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT} 🚀`);
+  console.log(`Server running on ${PORT} 🚀`);
 });
