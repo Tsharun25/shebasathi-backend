@@ -11,6 +11,7 @@ const app = express();
 // ================= MIDDLEWARE =================
 app.use(express.json());
 
+// ✅ CORS FIX (Production Ready)
 const allowedOrigins = [
   "http://localhost:3000",
   "https://shebasathi-next.vercel.app",
@@ -19,28 +20,17 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      // allow requests with no origin (mobile apps, postman)
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
+        callback(null, true);
       } else {
-        return callback(new Error("Not allowed by CORS"));
+        callback(new Error("CORS blocked ❌"));
       }
     },
     credentials: true,
   })
 );
-
-// app.use(
-//   cors({
-//     origin: [
-//       "http://localhost:3000",
-//       "https://your-frontend.vercel.app"
-//     ],
-//     credentials: true,
-//   })
-// );
 
 // ================= MONGODB CONNECT =================
 mongoose
@@ -49,17 +39,33 @@ mongoose
   .catch((err) => console.log("MongoDB Error ❌", err));
 
 // ================= SCHEMAS =================
+
+// USER
 const User = mongoose.model("User", {
   name: String,
   email: String,
   password: String,
 });
 
+// DOCTOR
 const Doctor = mongoose.model("Doctor", {
   name: String,
   department: String,
   hospital: String,
   fee: Number,
+});
+
+// BOOKING (UPDATED ✅)
+const Booking = mongoose.model("Booking", {
+  userEmail: String,
+  doctorId: String,
+  doctorName: String,
+  date: String,
+  time: String,
+  status: {
+    type: String,
+    default: "pending",
+  },
 });
 
 // ================= BASIC ROUTE =================
@@ -76,7 +82,7 @@ app.get("/api/health", (req, res) => {
 
 // ================= AUTH =================
 
-// REGISTER
+// REGISTER (mobile/email optional logic ready)
 app.post("/api/auth/register", async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -98,7 +104,7 @@ app.post("/api/auth/register", async (req, res) => {
 
     res.json({ message: "Registered successfully ✅" });
   } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
+    res.status(500).json({ message: "Server error" });
   }
 });
 
@@ -127,11 +133,13 @@ app.post("/api/auth/login", async (req, res) => {
       },
     });
   } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
+    res.status(500).json({ message: "Server error" });
   }
 });
 
 // ================= DOCTORS =================
+
+// GET ALL DOCTORS
 app.get("/api/doctors", async (req, res) => {
   try {
     const doctors = await Doctor.find();
@@ -148,42 +156,45 @@ app.get("/seed", async (req, res) => {
 
     await Doctor.insertMany([
       {
-        name: "ডা. রহমান",
+        name: "ডা. মোঃ রহমান",
         department: "কার্ডিওলজি",
-        hospital: "ঢাকা মেডিকেল",
-        fee: 500,
+        hospital: "ঢাকা মেডিকেল কলেজ",
+        fee: 1000,
       },
       {
-        name: "ডা. করিম",
+        name: "ডা. নুসরাত জাহান",
         department: "নিউরোলজি",
-        hospital: "স্কয়ার হাসপাতাল",
+        hospital: "এপোলো হাসপাতাল",
         fee: 800,
+      },
+      {
+        name: "ডা. তানভীর হাসান",
+        department: "মেডিসিন",
+        hospital: "ল্যাবএইড",
+        fee: 900,
       },
     ]);
 
-    res.send("Seed Done ✅");
+    res.send("Doctors Added ✅");
   } catch (err) {
     res.status(500).send("Seed Error ❌");
   }
 });
 
-
 // ================= BOOKINGS =================
-
-const Booking = mongoose.model("Booking", {
-  userEmail: String,
-  doctorName: String,
-  date: String,
-  time: String,
-});
 
 // CREATE BOOKING
 app.post("/api/book", async (req, res) => {
   try {
-    const { userEmail, doctorName, date, time } = req.body;
+    const { userEmail, doctorId, doctorName, date, time } = req.body;
+
+    if (!date || !time) {
+      return res.status(400).json({ message: "তারিখ ও সময় দিন" });
+    }
 
     const booking = new Booking({
       userEmail,
+      doctorId,
       doctorName,
       date,
       time,
@@ -191,22 +202,26 @@ app.post("/api/book", async (req, res) => {
 
     await booking.save();
 
-    res.json({ message: "Booking সফল ✅" });
+    res.json({ message: "বুকিং সফল ✅" });
   } catch (err) {
-    res.status(500).json({ message: "Booking error" });
+    res.status(500).json({ message: "Booking error ❌" });
   }
 });
 
-// GET USER BOOKINGS
+// USER BOOKINGS
 app.get("/api/my-bookings/:email", async (req, res) => {
-  const bookings = await Booking.find({
-    userEmail: req.params.email,
-  });
+  try {
+    const bookings = await Booking.find({
+      userEmail: req.params.email,
+    });
 
-  res.json(bookings);
+    res.json(bookings);
+  } catch (err) {
+    res.status(500).json({ message: "Error loading bookings" });
+  }
 });
 
-// ================= SERVER START =================
+// ================= SERVER =================
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
