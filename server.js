@@ -8,7 +8,6 @@ const jwt = require("jsonwebtoken");
 
 const app = express();
 
-// ================= MIDDLEWARE =================
 app.use(express.json());
 
 const allowedOrigins = [
@@ -20,23 +19,18 @@ app.use(
   cors({
     origin: function (origin, callback) {
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      } else {
-        return callback(new Error("Not allowed by CORS"));
-      }
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error("CORS error"));
     },
-    credentials: true,
   })
 );
 
-// ================= MONGODB CONNECT =================
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB Connected ✅"))
-  .catch((err) => console.log("MongoDB Error ❌", err));
+// DB CONNECT
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("Mongo Connected ✅"))
+  .catch(() => console.log("Mongo Error ❌"));
 
-// ================= SCHEMAS =================
+// ================= SCHEMA =================
 
 // USER
 const User = mongoose.model("User", {
@@ -46,12 +40,16 @@ const User = mongoose.model("User", {
   password: String,
 });
 
-// DOCTOR
+// DOCTOR (SMART)
 const Doctor = mongoose.model("Doctor", {
   name: String,
   department: String,
   hospital: String,
   fee: Number,
+  availableDays: [String],
+  startTime: String,
+  endTime: String,
+  slotDuration: Number,
 });
 
 // BOOKING
@@ -63,178 +61,123 @@ const Booking = mongoose.model("Booking", {
   time: String,
 });
 
-// ================= BASIC =================
-
-app.get("/", (req, res) => {
-  res.send("Backend running 🚀");
-});
-
-app.get("/api/health", (req, res) => {
-  res.json({ success: true });
-});
-
 // ================= AUTH =================
 
 // REGISTER
 app.post("/api/auth/register", async (req, res) => {
-  try {
-    const { name, email, phone, password } = req.body;
+  const { name, email, phone, password } = req.body;
 
-    if (!phone && !email) {
-      return res
-        .status(400)
-        .json({ message: "মোবাইল অথবা ইমেইল দিন" });
-    }
-
-    const existingUser = await User.findOne({
-      $or: [{ email }, { phone }],
-    });
-
-    if (existingUser) {
-      return res.status(400).json({
-        message: "এই ইউজার আগে থেকেই আছে",
-      });
-    }
-
-    const hashed = await bcrypt.hash(password, 10);
-
-    const user = new User({
-      name,
-      email,
-      phone,
-      password: hashed,
-    });
-
-    await user.save();
-
-    res.json({ message: "রেজিস্টার সফল ✅" });
-  } catch (err) {
-    res.status(500).json({ message: "Server error" });
+  if (!phone && !email) {
+    return res.json({ message: "মোবাইল বা ইমেইল দিন" });
   }
+
+  const exists = await User.findOne({
+    $or: [{ email }, { phone }],
+  });
+
+  if (exists) return res.json({ message: "আগেই রেজিস্টার করা" });
+
+  const hashed = await bcrypt.hash(password, 10);
+
+  await new User({ name, email, phone, password: hashed }).save();
+
+  res.json({ message: "রেজিস্টার সফল ✅" });
 });
 
-// LOGIN (phone/email)
+// LOGIN
 app.post("/api/auth/login", async (req, res) => {
-  try {
-    const { identifier, password } = req.body;
+  const { identifier, password } = req.body;
 
-    const user = await User.findOne({
-      $or: [{ email: identifier }, { phone: identifier }],
-    });
+  const user = await User.findOne({
+    $or: [{ email: identifier }, { phone: identifier }],
+  });
 
-    if (!user) {
-      return res.status(400).json({ message: "User not found" });
-    }
+  if (!user) return res.json({ message: "User not found" });
 
-    const match = await bcrypt.compare(password, user.password);
+  const match = await bcrypt.compare(password, user.password);
+  if (!match) return res.json({ message: "Wrong password" });
 
-    if (!match) {
-      return res.status(400).json({ message: "Wrong password" });
-    }
+  const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
-
-    res.json({
-      token,
-      user: {
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-      },
-    });
-  } catch (err) {
-    res.status(500).json({ message: "Server error" });
-  }
+  res.json({
+    token,
+    user: {
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+    },
+  });
 });
 
 // ================= DOCTORS =================
 
-// GET ALL DOCTORS (DB থেকে আসবে ✅)
+// GET DOCTORS
 app.get("/api/doctors", async (req, res) => {
-  try {
-    const doctors = await Doctor.find();
-    res.json(doctors);
-  } catch {
-    res.status(500).json({ message: "Error fetching doctors" });
-  }
+  const doctors = await Doctor.find();
+  res.json(doctors);
 });
 
-// SEED (only run once)
+// SEED
 app.get("/seed", async (req, res) => {
-  try {
-    await Doctor.deleteMany();
+  await Doctor.deleteMany();
 
-    await Doctor.insertMany([
-      {
-        name: "ডা. রহমান",
-        department: "কার্ডিওলজি",
-        hospital: "ঢাকা মেডিকেল",
-        fee: 500,
-      },
-      {
-        name: "ডা. করিম",
-        department: "নিউরোলজি",
-        hospital: "স্কয়ার হাসপাতাল",
-        fee: 800,
-      },
-    ]);
+  await Doctor.insertMany([
+    {
+      name: "ডা. রহমান",
+      department: "কার্ডিওলজি",
+      hospital: "ঢাকা মেডিকেল",
+      fee: 500,
+      availableDays: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"],
+      startTime: "16:00",
+      endTime: "21:00",
+      slotDuration: 60,
+    },
+    {
+      name: "ডা. করিম",
+      department: "নিউরোলজি",
+      hospital: "স্কয়ার হাসপাতাল",
+      fee: 800,
+      availableDays: ["Sunday", "Tuesday", "Thursday"],
+      startTime: "17:00",
+      endTime: "20:00",
+      slotDuration: 60,
+    },
+  ]);
 
-    res.send("Doctor DB Seeded ✅");
-  } catch {
-    res.status(500).send("Seed error");
-  }
+  res.send("Seed Done ✅");
 });
 
-// ================= BOOKINGS =================
+// ================= BOOKING =================
 
-// CREATE BOOKING
+// BOOK
 app.post("/api/book", async (req, res) => {
-  try {
-    const { userEmail, doctorId, doctorName, date, time } =
-      req.body;
+  const { userEmail, doctorId, doctorName, date, time } = req.body;
 
-    // ❗ prevent duplicate slot booking
-    const exists = await Booking.findOne({
-      doctorId,
-      date,
-      time,
-    });
+  // prevent duplicate
+  const exists = await Booking.findOne({ doctorId, date, time });
+  if (exists) return res.json({ message: "এই সময় বুকড ❌" });
 
-    if (exists) {
-      return res.json({
-        message: "এই সময় ইতিমধ্যে বুকড ❌",
-      });
-    }
+  await new Booking({ userEmail, doctorId, doctorName, date, time }).save();
 
-    const booking = new Booking({
-      userEmail,
-      doctorId,
-      doctorName,
-      date,
-      time,
-    });
-
-    await booking.save();
-
-    res.json({ message: "বুকিং সফল ✅" });
-  } catch {
-    res.status(500).json({ message: "Booking error" });
-  }
+  res.json({ message: "বুকিং সফল ✅" });
 });
 
 // GET USER BOOKINGS
 app.get("/api/my-bookings/:email", async (req, res) => {
-  const bookings = await Booking.find({
-    userEmail: req.params.email,
+  const data = await Booking.find({ userEmail: req.params.email });
+  res.json(data);
+});
+
+// BOOKED SLOTS
+app.get("/api/booked/:doctorId/:date", async (req, res) => {
+  const data = await Booking.find({
+    doctorId: req.params.doctorId,
+    date: req.params.date,
   });
 
-  res.json(bookings);
+  res.json(data.map((d) => d.time));
 });
 
 // ================= SERVER =================
 
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => {
-  console.log(`Server running on ${PORT} 🚀`);
-});
+app.listen(5000, () => console.log("Server running 🚀"));
