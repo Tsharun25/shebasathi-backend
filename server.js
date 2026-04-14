@@ -4,11 +4,11 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
 
 const app = express();
 app.use(express.json());
 
+// ================= CORS =================
 const allowedOrigins = [
   "http://localhost:3000",
   "https://shebasathi-next.vercel.app",
@@ -21,7 +21,7 @@ app.use(
       if (allowedOrigins.includes(origin)) return callback(null, true);
       return callback(new Error("CORS error"));
     },
-  })
+  }),
 );
 
 // ================= DB =================
@@ -36,7 +36,10 @@ const User = mongoose.model("User", {
   phone: String,
   email: String,
   password: String,
-  role: { type: String, default: "user" },
+  role: {
+    type: String,
+    default: "user",
+  },
 });
 
 const Doctor = mongoose.model("Doctor", {
@@ -71,53 +74,77 @@ const Hotel = mongoose.model("Hotel", {
 
 // REGISTER
 app.post("/api/auth/register", async (req, res) => {
-  const { name, phone, email, password } = req.body;
+  try {
+    const { name, phone, email, password } = req.body;
 
-  const exist = await User.findOne({
-    $or: [{ phone }, { email }],
-  });
+    if (!password) {
+      return res.json({ message: "Password required" });
+    }
 
-  if (exist) return res.json({ message: "User already exists" });
+    if (!phone && !email) {
+      return res.json({ message: "Phone or Email required" });
+    }
 
-  const hash = await bcrypt.hash(password, 10);
+    const exist = await User.findOne({
+      $or: [{ phone }, { email }],
+    });
 
-  await new User({
-    name,
-    phone,
-    email,
-    password: hash,
-  }).save();
+    if (exist) {
+      return res.json({ message: "User already exists" });
+    }
 
-  res.json({ message: "Register success ✅" });
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await new User({
+      name,
+      phone,
+      email,
+      password: hashedPassword,
+    }).save();
+
+    res.json({ message: "Register success ✅" });
+  } catch (err) {
+    res.json({ message: "Server error" });
+  }
 });
 
-// LOGIN (phone/email)
+// LOGIN ✅ FIXED
 app.post("/api/auth/login", async (req, res) => {
-  const { phone, email, password } = req.body;
+  try {
+    const { phone, email, password } = req.body;
 
-  const user = await User.findOne({
-    $or: [{ phone }, { email }],
-  });
+    const user = await User.findOne({
+      $or: [{ phone }, { email }],
+    });
 
-  if (!user) return res.json({ message: "User not found" });
+    if (!user) {
+      return res.json({ message: "User not found" });
+    }
 
-  const ok = await bcrypt.compare(password, user.password);
-  if (!ok) return res.json({ message: "Wrong password" });
+    const isMatch = await bcrypt.compare(password, user.password);
 
-  res.json({
-    user: {
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      role: user.role,
-    },
-  });
+    if (!isMatch) {
+      return res.json({ message: "Password wrong" });
+    }
+
+    res.json({
+      user: {
+        name: user.name,
+        phone: user.phone,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    res.json({ message: "Server error" });
+  }
 });
 
 // ================= DOCTOR =================
 
 app.get("/api/doctors", async (req, res) => {
-  res.json(await Doctor.find());
+  const data = await Doctor.find();
+  res.json(data);
 });
 
 app.post("/api/admin/add-doctor", async (req, res) => {
@@ -130,32 +157,50 @@ app.delete("/api/admin/delete-doctor/:id", async (req, res) => {
   res.json({ message: "Deleted ❌" });
 });
 
-// ================= BOOKING =================
+//================Booking=======================
 
 app.post("/api/book", async (req, res) => {
-  await new Booking(req.body).save();
-  res.json({ message: "Booked ✅" });
-});
+  try {
+    const { doctor, date, time, user } = req.body;
 
-app.get("/api/my-bookings/:user", async (req, res) => {
-  res.json(await Booking.find({ user: req.params.user }));
-});
+    const doc = await Doctor.findOne({ name: doctor });
 
-// ================= TRANSPORT =================
+    if (!doc) {
+      return res.json({ message: "Doctor not found" });
+    }
 
-app.get("/api/transport", async (req, res) => {
-  res.json(await Transport.find());
-});
+    const day = new Date(date).toLocaleDateString("en-US", {
+      weekday: "short",
+    });
 
-app.post("/api/transport-book", async (req, res) => {
-  await new Transport(req.body).save();
-  res.json({ message: "Transport booked 🚑" });
+    if (!doc.days.includes(day)) {
+      return res.json({ message: "এই দিনে ডাক্তার বসেন না" });
+    }
+
+    const exist = await Booking.findOne({ doctor, date, time });
+
+    if (exist) {
+      return res.json({ message: "এই সময় আগে থেকেই বুকড" });
+    }
+
+    await new Booking({
+      doctor,
+      date,
+      time,
+      user, // 🔥 IMPORTANT
+    }).save();
+
+    res.json({ message: "Booking success ✅" });
+  } catch (err) {
+    res.json({ message: "Booking error" });
+  }
 });
 
 // ================= HOTEL =================
 
 app.get("/api/hotel", async (req, res) => {
-  res.json(await Hotel.find());
+  const data = await Hotel.find();
+  res.json(data);
 });
 
 app.post("/api/hotel-book", async (req, res) => {
@@ -171,6 +216,71 @@ app.get("/api/admin/stats", async (req, res) => {
   const bookings = await Booking.countDocuments();
 
   res.json({ users, doctors, bookings });
+});
+
+//===============my Bookings=============
+
+app.get("/api/my-bookings/:user", async (req, res) => {
+  const data = await Booking.find({ user: req.params.user });
+  res.json(data);
+});
+
+//==============Services Booking==============
+const ServiceBooking = mongoose.model("ServiceBooking", {
+  user: String,
+  service: String,
+  type: String, // transport / hotel
+});
+
+app.post("/api/transport-book", async (req, res) => {
+  try {
+    const { user, service } = req.body;
+
+    await new ServiceBooking({
+      user,
+      service,
+      type: "transport",
+    }).save();
+
+    res.json({ message: "Transport booked 🚑" });
+  } catch (err) {
+    res.json({ message: "Error booking transport" });
+  }
+});
+
+app.post("/api/hotel-book", async (req, res) => {
+  try {
+    const { user, service } = req.body;
+
+    await new ServiceBooking({
+      user,
+      service,
+      type: "hotel",
+    }).save();
+
+    res.json({ message: "Hotel booked 🏨" });
+  } catch (err) {
+    res.json({ message: "Error booking hotel" });
+  }
+});
+
+app.get("/api/my-bookings/:user", async (req, res) => {
+  try {
+    const doctorBookings = await Booking.find({
+      user: req.params.user,
+    });
+
+    const serviceBookings = await ServiceBooking.find({
+      user: req.params.user,
+    });
+
+    res.json({
+      doctor: doctorBookings,
+      service: serviceBookings,
+    });
+  } catch (err) {
+    res.json({ message: "Error loading bookings" });
+  }
 });
 
 // ================= SERVER =================
