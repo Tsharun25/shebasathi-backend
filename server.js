@@ -3,6 +3,8 @@ require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
 const app = express();
 app.use(express.json());
@@ -22,92 +24,154 @@ app.use(
   })
 );
 
-// DB
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("Mongo Connected ✅"))
+// ================= DB =================
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("MongoDB Connected ✅"))
   .catch(() => console.log("Mongo Error ❌"));
 
-// ================= SCHEMA =================
-
-// TRANSPORT
-const Transport = mongoose.model("Transport", {
+// ================= SCHEMAS =================
+const User = mongoose.model("User", {
   name: String,
-  type: String, // ambulance/car
   phone: String,
-  location: String,
+  email: String,
+  password: String,
+  role: { type: String, default: "user" },
 });
 
-// HOTEL
+const Doctor = mongoose.model("Doctor", {
+  name: String,
+  department: String,
+  hospital: String,
+  fee: Number,
+  days: [String],
+  time: String,
+});
+
+const Booking = mongoose.model("Booking", {
+  user: String,
+  doctor: String,
+  date: String,
+  time: String,
+});
+
+const Transport = mongoose.model("Transport", {
+  name: String,
+  location: String,
+  phone: String,
+});
+
 const Hotel = mongoose.model("Hotel", {
   name: String,
   location: String,
   price: Number,
 });
 
-// BOOKINGS
-const TransportBooking = mongoose.model("TransportBooking", {
-  name: String,
-  phone: String,
-  location: String,
-  date: String,
+// ================= AUTH =================
+
+// REGISTER
+app.post("/api/auth/register", async (req, res) => {
+  const { name, phone, email, password } = req.body;
+
+  const exist = await User.findOne({
+    $or: [{ phone }, { email }],
+  });
+
+  if (exist) return res.json({ message: "User already exists" });
+
+  const hash = await bcrypt.hash(password, 10);
+
+  await new User({
+    name,
+    phone,
+    email,
+    password: hash,
+  }).save();
+
+  res.json({ message: "Register success ✅" });
 });
 
-const HotelBooking = mongoose.model("HotelBooking", {
-  name: String,
-  phone: String,
-  location: String,
-  date: String,
+// LOGIN (phone/email)
+app.post("/api/auth/login", async (req, res) => {
+  const { phone, email, password } = req.body;
+
+  const user = await User.findOne({
+    $or: [{ phone }, { email }],
+  });
+
+  if (!user) return res.json({ message: "User not found" });
+
+  const ok = await bcrypt.compare(password, user.password);
+  if (!ok) return res.json({ message: "Wrong password" });
+
+  res.json({
+    user: {
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+    },
+  });
 });
 
-// ================= ROUTES =================
+// ================= DOCTOR =================
 
-// GET TRANSPORT
+app.get("/api/doctors", async (req, res) => {
+  res.json(await Doctor.find());
+});
+
+app.post("/api/admin/add-doctor", async (req, res) => {
+  await new Doctor(req.body).save();
+  res.json({ message: "Doctor added ✅" });
+});
+
+app.delete("/api/admin/delete-doctor/:id", async (req, res) => {
+  await Doctor.findByIdAndDelete(req.params.id);
+  res.json({ message: "Deleted ❌" });
+});
+
+// ================= BOOKING =================
+
+app.post("/api/book", async (req, res) => {
+  await new Booking(req.body).save();
+  res.json({ message: "Booked ✅" });
+});
+
+app.get("/api/my-bookings/:user", async (req, res) => {
+  res.json(await Booking.find({ user: req.params.user }));
+});
+
+// ================= TRANSPORT =================
+
 app.get("/api/transport", async (req, res) => {
-  const data = await Transport.find();
-  res.json(data);
+  res.json(await Transport.find());
 });
 
-// BOOK TRANSPORT
 app.post("/api/transport-book", async (req, res) => {
-  await new TransportBooking(req.body).save();
-  res.json({ message: "🚑 বুকিং সফল" });
+  await new Transport(req.body).save();
+  res.json({ message: "Transport booked 🚑" });
 });
 
-// GET HOTEL
+// ================= HOTEL =================
+
 app.get("/api/hotel", async (req, res) => {
-  const data = await Hotel.find();
-  res.json(data);
+  res.json(await Hotel.find());
 });
 
-// BOOK HOTEL
 app.post("/api/hotel-book", async (req, res) => {
-  await new HotelBooking(req.body).save();
-  res.json({ message: "🏨 বুকিং সফল" });
+  await new Hotel(req.body).save();
+  res.json({ message: "Hotel booked 🏨" });
 });
 
-// SEED
-app.get("/seed-services", async (req, res) => {
-  await Transport.deleteMany();
-  await Hotel.deleteMany();
+// ================= ADMIN STATS =================
 
-  await Transport.insertMany([
-    {
-      name: "ঢাকা অ্যাম্বুলেন্স সার্ভিস",
-      type: "Ambulance",
-      phone: "01700000000",
-      location: "ঢাকা",
-    },
-  ]);
+app.get("/api/admin/stats", async (req, res) => {
+  const users = await User.countDocuments();
+  const doctors = await Doctor.countDocuments();
+  const bookings = await Booking.countDocuments();
 
-  await Hotel.insertMany([
-    {
-      name: "সিটি গেস্ট হাউস",
-      location: "ঢাকা মেডিকেল এর পাশে",
-      price: 1000,
-    },
-  ]);
-
-  res.send("Services Seed Done ✅");
+  res.json({ users, doctors, bookings });
 });
 
+// ================= SERVER =================
 app.listen(5000, () => console.log("Server running 🚀"));
