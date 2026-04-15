@@ -21,7 +21,7 @@ app.use(
       if (allowedOrigins.includes(origin)) return callback(null, true);
       return callback(new Error("CORS error"));
     },
-  })
+  }),
 );
 
 // ================= DB =================
@@ -74,32 +74,67 @@ const Hotel = mongoose.model("Hotel", {
 // ================= AUTH =================
 
 // REGISTER
+// app.post("/api/auth/register", async (req, res) => {
+//   try {
+//     const { name, phone, email, password } = req.body;
+
+//     if (!password) return res.json({ message: "Password required" });
+//     if (!phone && !email)
+//       return res.json({ message: "Phone or Email required" });
+
+//     const exist = await User.findOne({
+//       $or: [{ phone }, { email }],
+//     });
+
+//     if (exist) return res.json({ message: "User already exists" });
+
+//     const hash = await bcrypt.hash(password, 10);
+
+//     await new User({
+//       name,
+//       phone,
+//       email,
+//       password: hash,
+//     }).save();
+
+//     res.json({ message: "Register success ✅" });
+//   } catch {
+//     res.status(500).json({ message: "Server error" });
+//   }
+// });
+
 app.post("/api/auth/register", async (req, res) => {
   try {
     const { name, phone, email, password } = req.body;
 
-    if (!password) return res.json({ message: "Password required" });
-    if (!phone && !email)
+    if (!password) {
+      return res.json({ message: "Password required" });
+    }
+
+    if (!phone && !email) {
       return res.json({ message: "Phone or Email required" });
+    }
 
     const exist = await User.findOne({
       $or: [{ phone }, { email }],
     });
 
-    if (exist) return res.json({ message: "User already exists" });
+    if (exist) {
+      return res.json({ message: "User already exists" });
+    }
 
     const hash = await bcrypt.hash(password, 10);
 
     await new User({
       name,
-      phone,
-      email,
+      phone: phone || "",
+      email: email || "",
       password: hash,
     }).save();
 
     res.json({ message: "Register success ✅" });
-  } catch {
-    res.status(500).json({ message: "Server error" });
+  } catch (err) {
+    res.json({ message: "Server error" });
   }
 });
 
@@ -190,7 +225,6 @@ app.get("/api/my-bookings/:user", async (req, res) => {
     res.status(500).json({ message: "Error fetching bookings" });
   }
 });
-
 
 // ================= TRANSPORT =================
 
