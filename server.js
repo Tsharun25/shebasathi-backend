@@ -8,7 +8,21 @@ const bcrypt = require("bcryptjs");
 const app = express();
 app.use(express.json());
 
-app.use(cors());
+// ================= CORS =================
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://shebasathi-next.vercel.app",
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error("CORS error"));
+    },
+  })
+);
 
 // ================= DB =================
 mongoose
@@ -16,13 +30,17 @@ mongoose
   .then(() => console.log("MongoDB Connected ✅"))
   .catch(() => console.log("Mongo Error ❌"));
 
-// ================= SCHEMAS =================
+// ================= SCHEMA =================
+
 const User = mongoose.model("User", {
   name: String,
   phone: String,
   email: String,
   password: String,
-  role: { type: String, default: "user" },
+  role: {
+    type: String,
+    default: "user",
+  },
 });
 
 const Doctor = mongoose.model("Doctor", {
@@ -30,7 +48,7 @@ const Doctor = mongoose.model("Doctor", {
   department: String,
   hospital: String,
   fee: Number,
-  days: [String], // ["Sun","Mon"]
+  days: [String],
   time: String,
 });
 
@@ -39,6 +57,18 @@ const Booking = mongoose.model("Booking", {
   doctor: String,
   date: String,
   time: String,
+});
+
+const Transport = mongoose.model("Transport", {
+  name: String,
+  location: String,
+  phone: String,
+});
+
+const Hotel = mongoose.model("Hotel", {
+  name: String,
+  location: String,
+  price: Number,
 });
 
 // ================= AUTH =================
@@ -69,17 +99,17 @@ app.post("/api/auth/register", async (req, res) => {
 
     res.json({ message: "Register success ✅" });
   } catch {
-    res.json({ message: "Server error" });
+    res.status(500).json({ message: "Server error" });
   }
 });
 
 // LOGIN
 app.post("/api/auth/login", async (req, res) => {
   try {
-    const { identifier, password } = req.body;
+    const { phone, email, password } = req.body;
 
     const user = await User.findOne({
-      $or: [{ phone: identifier }, { email: identifier }],
+      $or: [{ phone }, { email }],
     });
 
     if (!user) return res.json({ message: "User not found" });
@@ -97,23 +127,31 @@ app.post("/api/auth/login", async (req, res) => {
       },
     });
   } catch {
-    res.json({ message: "Server error" });
+    res.status(500).json({ message: "Server error" });
   }
 });
 
 // ================= DOCTOR =================
+
 app.get("/api/doctors", async (req, res) => {
   res.json(await Doctor.find());
 });
 
+app.post("/api/admin/add-doctor", async (req, res) => {
+  await new Doctor(req.body).save();
+  res.json({ message: "Doctor added ✅" });
+});
+
+app.delete("/api/admin/delete-doctor/:id", async (req, res) => {
+  await Doctor.findByIdAndDelete(req.params.id);
+  res.json({ message: "Deleted ❌" });
+});
+
 // ================= BOOKING =================
 
-// 🔥 BOOK
 app.post("/api/book", async (req, res) => {
   try {
     const { doctor, date, time, user } = req.body;
-
-    if (!user) return res.json({ message: "Login required" });
 
     const doc = await Doctor.findOne({ name: doctor });
 
@@ -121,7 +159,6 @@ app.post("/api/book", async (req, res) => {
       weekday: "short",
     });
 
-    // ❌ doctor available না হলে block
     if (!doc.days.includes(day)) {
       return res.json({ message: "এই দিনে ডাক্তার বসেন না" });
     }
@@ -136,26 +173,67 @@ app.post("/api/book", async (req, res) => {
 
     res.json({ message: "Booking success ✅" });
   } catch {
-    res.json({ message: "Server error" });
+    res.status(500).json({ message: "Booking error" });
   }
 });
 
-// 🔥 USER BOOKINGS
+// ================= MY BOOKINGS =================
+
 app.get("/api/my-bookings/:user", async (req, res) => {
-  const data = await Booking.find({ user: req.params.user });
-  res.json(data);
+  try {
+    const data = await Booking.find({
+      user: req.params.user,
+    });
+
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching bookings" });
+  }
 });
+
 
 // ================= TRANSPORT =================
 
+// GET all transport
 app.get("/api/transport", async (req, res) => {
-  res.json(await Transport.find());
+  try {
+    const data = await Transport.find();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: "Transport error" });
+  }
 });
 
+// ADD transport booking (optional)
 app.post("/api/transport-book", async (req, res) => {
-  await new Transport(req.body).save();
-  res.json({ message: "Transport booked 🚗" });
+  try {
+    await new Transport(req.body).save();
+    res.json({ message: "Transport booked 🚗" });
+  } catch (err) {
+    res.status(500).json({ message: "Transport booking error" });
+  }
+});
+
+// ================= HOTEL =================
+
+app.get("/api/hotel", async (req, res) => {
+  try {
+    const data = await Hotel.find();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ message: "Hotel error" });
+  }
+});
+
+app.post("/api/hotel-book", async (req, res) => {
+  try {
+    await new Hotel(req.body).save();
+    res.json({ message: "Hotel booked 🏨" });
+  } catch (err) {
+    res.status(500).json({ message: "Hotel booking error" });
+  }
 });
 
 // ================= SERVER =================
+
 app.listen(5000, () => console.log("Server running 🚀"));
