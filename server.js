@@ -9,13 +9,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ✅ DB CONNECT
+// ================= DB =================
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB connected ✅"))
-  .catch((err) => console.log(err));
+  .catch((err) => console.log("DB ERROR:", err));
 
-// ✅ MODELS
+// ================= MODELS =================
 const User = mongoose.model("User", {
   name: String,
   phone: String,
@@ -28,10 +28,13 @@ const Booking = mongoose.model("Booking", {
   date: String,
   time: String,
   user: String,
-  type: String, // 🔥 extra (transport/hotel)
+  type: String, // doctor / hotel / transport
+  from: String,
+  to: String,
+  service: String,
 });
 
-// ✅ ROOT
+// ================= ROOT =================
 app.get("/", (req, res) => {
   res.send("Server running ✅");
 });
@@ -44,7 +47,16 @@ app.post("/api/register", async (req, res) => {
     const { name, phone, email, password } = req.body;
 
     if (!name || (!phone && !email) || !password) {
-      return res.json({ message: "All fields required" });
+      return res.json({ message: "সব তথ্য দিন" });
+    }
+
+    // duplicate check
+    const exist = await User.findOne({
+      $or: [{ phone }, { email }],
+    });
+
+    if (exist) {
+      return res.json({ message: "User already exists" });
     }
 
     const user = new User({ name, phone, email, password });
@@ -57,7 +69,7 @@ app.post("/api/register", async (req, res) => {
   }
 });
 
-// LOGIN 🔥 FIXED
+// LOGIN 🔥 FINAL FIX
 app.post("/api/login", async (req, res) => {
   try {
     const { phone, email, password } = req.body;
@@ -71,64 +83,11 @@ app.post("/api/login", async (req, res) => {
       return res.json({ message: "Invalid credentials" });
     }
 
-    // 🔥 IMPORTANT
-    res.json({ user });
+    res.json(user); // 🔥 frontend will use _id
   } catch (err) {
     console.log(err);
     res.status(500).json({ message: "Server error" });
   }
-});
-
-// ================= BOOKING =================
-
-// DOCTOR BOOK
-app.post("/api/book", async (req, res) => {
-  try {
-    const booking = new Booking(req.body);
-    await booking.save();
-
-    res.json({ message: "Booking saved ✅" });
-  } catch (err) {
-    res.status(500).json({ message: "Booking failed ❌" });
-  }
-});
-
-// HOTEL BOOK
-app.post("/api/hotel-book", async (req, res) => {
-  try {
-    const booking = new Booking({
-      ...req.body,
-      type: "hotel",
-    });
-
-    await booking.save();
-
-    res.json({ message: "Hotel booked ✅" });
-  } catch (err) {
-    res.status(500).json({ message: "Hotel booking failed ❌" });
-  }
-});
-
-// TRANSPORT BOOK
-app.post("/api/transport-book", async (req, res) => {
-  try {
-    const booking = new Booking({
-      ...req.body,
-      type: "transport",
-    });
-
-    await booking.save();
-
-    res.json({ message: "Transport booked ✅" });
-  } catch (err) {
-    res.status(500).json({ message: "Transport booking failed ❌" });
-  }
-});
-
-// MY BOOKINGS
-app.get("/api/my-bookings/:user", async (req, res) => {
-  const data = await Booking.find({ user: req.params.user });
-  res.json(data);
 });
 
 // ================= DOCTORS =================
@@ -154,7 +113,84 @@ app.get("/api/doctors", (req, res) => {
   ]);
 });
 
+// ================= BOOKING =================
+
+// DOCTOR
+app.post("/api/book", async (req, res) => {
+  try {
+    const booking = new Booking({
+      ...req.body,
+      type: "doctor",
+    });
+
+    await booking.save();
+
+    res.json({ message: "Booking saved ✅" });
+  } catch (err) {
+    res.status(500).json({ message: "Booking failed ❌" });
+  }
+});
+
+// HOTEL
+app.post("/api/hotel-book", async (req, res) => {
+  try {
+    const booking = new Booking({
+      ...req.body,
+      type: "hotel",
+    });
+
+    await booking.save();
+
+    res.json({ message: "Hotel booked ✅" });
+  } catch (err) {
+    res.status(500).json({ message: "Hotel booking failed ❌" });
+  }
+});
+
+// TRANSPORT
+app.post("/api/transport-book", async (req, res) => {
+  try {
+    const booking = new Booking({
+      ...req.body,
+      type: "transport",
+    });
+
+    await booking.save();
+
+    res.json({ message: "Transport booked ✅" });
+  } catch (err) {
+    res.status(500).json({ message: "Transport booking failed ❌" });
+  }
+});
+
+// ================= MY BOOKINGS =================
+
+app.get("/api/my-bookings/:user", async (req, res) => {
+  try {
+    const data = await Booking.find({ user: req.params.user });
+    res.json(data);
+  } catch (err) {
+    res.json([]);
+  }
+});
+
+// ================= TRANSPORT LIST =================
+app.get("/api/transport", (req, res) => {
+  res.json([
+    { name: "Ambulance", location: "Dhaka", phone: "01700000000" },
+    { name: "Car Service", location: "Gazipur", phone: "01800000000" },
+  ]);
+});
+
+// ================= HOTEL LIST =================
+app.get("/api/hotel", (req, res) => {
+  res.json([
+    { name: "Hotel Green", location: "Dhaka", price: 1500 },
+    { name: "Hotel City", location: "Gazipur", price: 1000 },
+  ]);
+});
+
 // ================= START =================
-app.listen(process.env.PORT || 5000, () =>
-  console.log("Server running 🚀")
-);
+app.listen(process.env.PORT || 5000, () => {
+  console.log("Server running on port 5000 🚀");
+});
