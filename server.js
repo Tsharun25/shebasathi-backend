@@ -9,13 +9,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ================= DB =================
+// ✅ DB CONNECT
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB connected ✅"))
-  .catch((err) => console.log("DB ERROR:", err));
+  .catch((err) => console.log(err));
 
-// ================= MODELS =================
+// ✅ MODELS
 const User = mongoose.model("User", {
   name: String,
   phone: String,
@@ -28,18 +28,17 @@ const Booking = mongoose.model("Booking", {
   date: String,
   time: String,
   user: String,
-  type: String,
-  from: String,
-  to: String,
-  service: String,
+  type: String, // 🔥 extra (transport/hotel)
 });
 
-// ================= ROUTES =================
+// ✅ ROOT
 app.get("/", (req, res) => {
   res.send("Server running ✅");
 });
 
-// ✅ REGISTER FIXED
+// ================= AUTH =================
+
+// REGISTER
 app.post("/api/register", async (req, res) => {
   try {
     const { name, phone, email, password } = req.body;
@@ -48,33 +47,20 @@ app.post("/api/register", async (req, res) => {
       return res.json({ message: "All fields required" });
     }
 
-    // 🔥 DUPLICATE CHECK
-    const existing = await User.findOne({
-      $or: [{ phone }, { email }],
-    });
-
-    if (existing) {
-      return res.json({ message: "User already exists" });
-    }
-
-    const newUser = new User({ name, phone, email, password });
-    await newUser.save();
+    const user = new User({ name, phone, email, password });
+    await user.save();
 
     res.json({ message: "User created" });
   } catch (err) {
-    console.log("REGISTER ERROR:", err);
+    console.log(err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// ✅ LOGIN FIXED
+// LOGIN 🔥 FIXED
 app.post("/api/login", async (req, res) => {
   try {
     const { phone, email, password } = req.body;
-
-    if ((!phone && !email) || !password) {
-      return res.json({ message: "All fields required" });
-    }
 
     const user = await User.findOne({
       $or: [{ phone }, { email }],
@@ -85,35 +71,90 @@ app.post("/api/login", async (req, res) => {
       return res.json({ message: "Invalid credentials" });
     }
 
+    // 🔥 IMPORTANT
     res.json({ user });
   } catch (err) {
-    console.log("LOGIN ERROR:", err);
+    console.log(err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// ✅ BOOKING
+// ================= BOOKING =================
+
+// DOCTOR BOOK
 app.post("/api/book", async (req, res) => {
   try {
     const booking = new Booking(req.body);
     await booking.save();
+
     res.json({ message: "Booking saved ✅" });
   } catch (err) {
-    res.status(500).json({ message: "Booking error" });
+    res.status(500).json({ message: "Booking failed ❌" });
   }
 });
 
-// ✅ MY BOOKINGS
-app.get("/api/my-bookings/:user", async (req, res) => {
+// HOTEL BOOK
+app.post("/api/hotel-book", async (req, res) => {
   try {
-    const data = await Booking.find({ user: req.params.user });
-    res.json(data);
+    const booking = new Booking({
+      ...req.body,
+      type: "hotel",
+    });
+
+    await booking.save();
+
+    res.json({ message: "Hotel booked ✅" });
   } catch (err) {
-    res.status(500).json([]);
+    res.status(500).json({ message: "Hotel booking failed ❌" });
   }
+});
+
+// TRANSPORT BOOK
+app.post("/api/transport-book", async (req, res) => {
+  try {
+    const booking = new Booking({
+      ...req.body,
+      type: "transport",
+    });
+
+    await booking.save();
+
+    res.json({ message: "Transport booked ✅" });
+  } catch (err) {
+    res.status(500).json({ message: "Transport booking failed ❌" });
+  }
+});
+
+// MY BOOKINGS
+app.get("/api/my-bookings/:user", async (req, res) => {
+  const data = await Booking.find({ user: req.params.user });
+  res.json(data);
+});
+
+// ================= DOCTORS =================
+
+app.get("/api/doctors", (req, res) => {
+  res.json([
+    {
+      name: "Dr. Rahman",
+      specialist: "Medicine",
+      hospital: "Dhaka Medical",
+      fee: 500,
+      days: ["Sun", "Tue", "Thu"],
+      time: "10AM - 2PM",
+    },
+    {
+      name: "Dr. Karim",
+      specialist: "Cardiology",
+      hospital: "Square Hospital",
+      fee: 800,
+      days: ["Mon", "Wed"],
+      time: "3PM - 7PM",
+    },
+  ]);
 });
 
 // ================= START =================
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(process.env.PORT || 5000, () =>
+  console.log("Server running 🚀")
+);
