@@ -141,7 +141,7 @@ app.get("/api/doctors", (req, res) => {
       hospital: "Dhaka Medical",
       fee: 500,
       days: ["Sun", "Tue", "Thu"],
-      time: "10AM - 2PM",
+      time: "সকাল ১০টা - দুপুর ২টা",
     },
     {
       name: "Dr. Karim",
@@ -149,7 +149,7 @@ app.get("/api/doctors", (req, res) => {
       hospital: "Square Hospital",
       fee: 800,
       days: ["Mon", "Wed"],
-      time: "3PM - 7PM",
+      time: "বিকাল ৩টা - রাত ৮টা",
     },
   ]);
 });
