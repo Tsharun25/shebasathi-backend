@@ -6,7 +6,9 @@ import cors from "cors";
 dotenv.config();
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: "*",
+}));
 app.use(express.json());
 
 // ================= DB =================
@@ -21,6 +23,15 @@ const User = mongoose.model("User", {
   phone: String,
   email: String,
   password: String,
+});
+
+const Doctor = mongoose.model("Doctor", {
+  name: String,
+  specialist: String,
+  hospital: String,
+  fee: Number,
+  days: [String],
+  time: String,
 });
 
 const Booking = mongoose.model("Booking", {
@@ -83,34 +94,43 @@ app.post("/api/login", async (req, res) => {
       return res.json({ message: "Invalid credentials" });
     }
 
-    res.json(user); // 🔥 frontend will use _id
+    res.json({
+      message: "Login success",
+      user: user,
+    });
+
   } catch (err) {
-    console.log(err);
+    console.log("LOGIN ERROR:", err); // 👈 VERY IMPORTANT
     res.status(500).json({ message: "Server error" });
   }
 });
 
 // ================= DOCTORS =================
 
-app.get("/api/doctors", (req, res) => {
-  res.json([
-    {
-      name: "Dr. Rahman",
-      specialist: "Medicine",
-      hospital: "Dhaka Medical",
-      fee: 500,
-      days: ["Sun", "Tue", "Thu"],
-      time: "সকাল ১০টা - দুপুর ২টা",
-    },
-    {
-      name: "Dr. Karim",
-      specialist: "Cardiology",
-      hospital: "Square Hospital",
-      fee: 800,
-      days: ["Mon", "Wed"],
-      time: "বিকাল ৩টা - রাত ৮টা",
-    },
-  ]);
+// app.get("/api/doctors", (req, res) => {
+//   res.json([
+//     {
+//       name: "Dr. Rahman",
+//       specialist: "Medicine",
+//       hospital: "Dhaka Medical",
+//       fee: 500,
+//       days: ["Sun", "Tue", "Thu"],
+//       time: "সকাল ১০টা - দুপুর ২টা",
+//     },
+//     {
+//       name: "Dr. Karim",
+//       specialist: "Cardiology",
+//       hospital: "Square Hospital",
+//       fee: 800,
+//       days: ["Mon", "Wed"],
+//       time: "বিকাল ৩টা - রাত ৮টা",
+//     },
+//   ]);
+// });
+
+app.get("/api/doctors", async (req, res) => {
+  const data = await Doctor.find();
+  res.json(data);
 });
 
 // ================= BOOKING =================
