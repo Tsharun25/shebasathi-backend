@@ -154,16 +154,12 @@ app.post("/api/book", async (req, res) => {
 // HOTEL
 app.post("/api/hotel-book", async (req, res) => {
   try {
-    const booking = new Booking({
-      ...req.body,
-      type: "hotel",
-    });
-
+    const booking = new Booking(req.body);
     await booking.save();
 
-    res.json({ message: "Hotel booked ✅" });
+    res.json({ message: "Hotel booking successful ✅" });
   } catch (err) {
-    res.status(500).json({ message: "Hotel booking failed ❌" });
+    res.status(500).json({ message: "Server error" });
   }
 });
 
