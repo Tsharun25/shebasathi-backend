@@ -107,7 +107,7 @@ app.post("/api/login", async (req, res) => {
 
 // ================= DOCTORS =================
 
-// app.get("/api/doctors", (req, res) => {
+// app.get("/api/doctors", async(req, res) => {
 //   res.json([
 //     {
 //       name: "Dr. Rahman",
