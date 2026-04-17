@@ -25,13 +25,25 @@ const User = mongoose.model("User", {
   password: String,
 });
 
+// const Doctor = mongoose.model("Doctor", {
+//   name: String,
+//   specialist: String,
+//   hospital: String,
+//   fee: Number,
+//   days: [String],
+//   time: String,
+// });
+
 const Doctor = mongoose.model("Doctor", {
   name: String,
   specialist: String,
   hospital: String,
   fee: Number,
   days: [String],
-  time: String,
+  time: {
+    start: String,
+    end: String,
+  },
 });
 
 const Booking = mongoose.model("Booking", {
