@@ -6,9 +6,11 @@ import cors from "cors";
 dotenv.config();
 
 const app = express();
-app.use(cors({
-  origin: "*",
-}));
+app.use(
+  cors({
+    origin: "*",
+  }),
+);
 app.use(express.json());
 
 // ================= DB =================
@@ -23,6 +25,7 @@ const User = mongoose.model("User", {
   phone: String,
   email: String,
   password: String,
+  total:Number,
 });
 
 // const Doctor = mongoose.model("Doctor", {
@@ -51,10 +54,16 @@ const Booking = mongoose.model("Booking", {
   date: String,
   time: String,
   user: String,
-  type: String, // doctor / hotel / transport
+  type: String,
+
   from: String,
   to: String,
+
   service: String,
+  days: Number,
+  people: Number,
+  price: Number,
+  total: Number, // 🔥 ADD THIS
 });
 
 // ================= ROOT =================
@@ -111,7 +120,6 @@ app.post("/api/login", async (req, res) => {
       message: "Login success",
       user: user,
     });
-
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
@@ -166,11 +174,26 @@ app.post("/api/book", async (req, res) => {
 // HOTEL
 app.post("/api/hotel-book", async (req, res) => {
   try {
-    const booking = new Booking(req.body);
+    const { service, date, days, people, price, user } = req.body;
+
+    const total = price * Number(days || 1);
+
+    const booking = new Booking({
+      type: "hotel",
+      service,
+      date,
+      days,
+      people,
+      price,
+      total, // 🔥 important
+      user,
+    });
+
     await booking.save();
 
     res.json({ message: "Hotel booking successful ✅" });
   } catch (err) {
+    console.log(err);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -178,14 +201,32 @@ app.post("/api/hotel-book", async (req, res) => {
 // TRANSPORT
 app.post("/api/transport-book", async (req, res) => {
   try {
+    const { from, to, date, user } = req.body;
+
+    // 🔥 SIMPLE DISTANCE BASED FARE (demo logic)
+    let baseFare = 200;
+
+    if (from !== to) {
+      baseFare += 100; // different location charge
+    }
+
+    const total = baseFare;
+
     const booking = new Booking({
-      ...req.body,
       type: "transport",
+      from,
+      to,
+      date,
+      total, // 🔥 save fare
+      user,
     });
 
     await booking.save();
 
-    res.json({ message: "Transport booked ✅" });
+    res.json({
+      message: "Transport booked ✅",
+      total,
+    });
   } catch (err) {
     res.status(500).json({ message: "Transport booking failed ❌" });
   }
