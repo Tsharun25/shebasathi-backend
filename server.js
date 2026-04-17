@@ -94,13 +94,13 @@ app.post("/api/login", async (req, res) => {
       return res.json({ message: "Invalid credentials" });
     }
 
+    // ✅ FIXED RESPONSE FORMAT
     res.json({
       message: "Login success",
       user: user,
     });
 
   } catch (err) {
-    console.log("LOGIN ERROR:", err); // 👈 VERY IMPORTANT
     res.status(500).json({ message: "Server error" });
   }
 });
