@@ -206,6 +206,17 @@ app.get("/api/hotel", (req, res) => {
   ]);
 });
 
+// ADD DOCTOR (ADMIN)
+app.post("/api/add-doctor", async (req, res) => {
+  try {
+    const doc = new Doctor(req.body);
+    await doc.save();
+    res.json({ message: "Doctor added ✅" });
+  } catch {
+    res.status(500).json({ message: "Failed ❌" });
+  }
+});
+
 // ================= START =================
 app.listen(process.env.PORT || 5000, () => {
   console.log("Server running on port 5000 🚀");
