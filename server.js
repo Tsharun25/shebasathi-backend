@@ -25,7 +25,7 @@ const User = mongoose.model("User", {
   phone: String,
   email: String,
   password: String,
-  total:Number,
+  role: { type: String, default: "user" }, // ✅ NEW
 });
 
 // const Doctor = mongoose.model("Doctor", {
@@ -268,6 +268,122 @@ app.post("/api/add-doctor", async (req, res) => {
   } catch {
     res.status(500).json({ message: "Failed ❌" });
   }
+});
+
+app.delete("/api/cancel-booking/:id", async (req, res) => {
+  try {
+    await Booking.findByIdAndDelete(req.params.id);
+    res.json({ message: "Deleted" });
+  } catch {
+    res.status(500).json({ message: "Error" });
+  }
+});
+
+// ================= OTP =================
+
+const otpStore = {}; // temp memory (later DB use korbi)
+
+// SEND OTP
+app.post("/api/send-otp", async (req, res) => {
+  const { phone } = req.body;
+
+  if (!phone) return res.json({ message: "Phone required" });
+
+  const otp = Math.floor(100000 + Math.random() * 900000);
+
+  otpStore[phone] = otp;
+
+  console.log("OTP:", otp); // 🔥 testing (SMS er jaygay)
+
+  res.json({ message: "OTP sent" });
+});
+
+// VERIFY OTP
+app.post("/api/verify-otp", async (req, res) => {
+  const { phone, otp } = req.body;
+
+  if (otpStore[phone] != otp) {
+    return res.json({ message: "Invalid OTP" });
+  }
+
+  // user create / login
+  let user = await User.findOne({ phone });
+
+  if (!user) {
+    user = new User({ phone, name: "User" });
+    await user.save();
+  }
+
+  delete otpStore[phone];
+
+  res.json({
+    message: "Login success",
+    user,
+  });
+});
+
+
+// ================= ADMIN =================
+
+// ALL USERS
+app.get("/api/admin/users", async (req, res) => {
+  const data = await User.find();
+  res.json(data);
+});
+
+// ALL BOOKINGS
+app.get("/api/admin/bookings", async (req, res) => {
+  const data = await Booking.find();
+  res.json(data);
+});
+
+// ADD DOCTOR
+app.post("/api/admin/add-doctor", async (req, res) => {
+  const doctor = new Doctor(req.body);
+  await doctor.save();
+  res.json({ message: "Doctor added ✅" });
+});
+
+const adminOnly = (req, res, next) => {
+  if (req.body.role !== "admin") {
+    return res.status(403).json({ message: "Access denied ❌" });
+  }
+  next();
+};
+
+
+app.delete("/api/admin/delete-booking/:id", async (req, res) => {
+  await Booking.findByIdAndDelete(req.params.id);
+  res.json({ message: "Deleted" });
+});
+
+
+const fares = {
+  "Dhaka-Gazipur": 300,
+  "Dhaka-Chittagong": 800,
+  "Dhaka-Sylhet": 700,
+};
+
+app.post("/api/transport-book", async (req, res) => {
+  const { from, to, user } = req.body;
+
+  const key = `${from}-${to}`;
+  const fare = fares[key] || 500; // default
+
+  const booking = new Booking({
+    from,
+    to,
+    user,
+    type: "transport",
+    fare,
+  });
+
+  await booking.save();
+
+  res.json({
+    message: "Transport booked ✅",
+    fare,
+  });
 });
 
 // ================= START =================
