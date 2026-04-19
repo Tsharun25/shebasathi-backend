@@ -13,6 +13,22 @@ app.use(
 );
 app.use(express.json());
 
+
+const fareMap = {
+  "Dhaka-Gazipur": 500,
+  "Dhaka-Rangpur": 1200,
+  "Dhaka-Chittagong": 1500,
+  "Gazipur-Dhaka": 500,
+  "Rangpur-Dhaka": 1200,
+};
+
+const fareList = [
+  { from: "Dhaka", to: "Gazipur", fare: 500 },
+  { from: "Dhaka", to: "Rangpur", fare: 1200 },
+];
+
+
+
 // ================= DB =================
 mongoose
   .connect(process.env.MONGO_URI)
@@ -27,6 +43,12 @@ const User = mongoose.model("User", {
   password: String,
   role: { type: String, default: "user" }, // ✅ NEW
 });
+
+// const Fare = mongoose.model("Fare", {
+//   from: String,
+//   to: String,
+//   fare: Number,
+// });
 
 // const Doctor = mongoose.model("Doctor", {
 //   name: String,
@@ -49,21 +71,33 @@ const Doctor = mongoose.model("Doctor", {
   },
 });
 
+// const Booking = mongoose.model("Booking", {
+//   doctor: String,
+//   date: String,
+//   time: String,
+//   user: String,
+//   type: String,
+
+//   from: String,
+//   to: String,
+
+//   service: String,
+//   days: Number,
+//   people: Number,
+//   price: Number,
+//   total: Number, // 🔥 ADD THIS
+// });
+
 const Booking = mongoose.model("Booking", {
   doctor: String,
   date: String,
   time: String,
   user: String,
   type: String,
-
   from: String,
   to: String,
-
   service: String,
-  days: Number,
-  people: Number,
-  price: Number,
-  total: Number, // 🔥 ADD THIS
+  fare: Number, // ✅ ADD THIS
 });
 
 // ================= ROOT =================
@@ -127,26 +161,6 @@ app.post("/api/login", async (req, res) => {
 
 // ================= DOCTORS =================
 
-// app.get("/api/doctors", async(req, res) => {
-//   res.json([
-//     {
-//       name: "Dr. Rahman",
-//       specialist: "Medicine",
-//       hospital: "Dhaka Medical",
-//       fee: 500,
-//       days: ["Sun", "Tue", "Thu"],
-//       time: "সকাল ১০টা - দুপুর ২টা",
-//     },
-//     {
-//       name: "Dr. Karim",
-//       specialist: "Cardiology",
-//       hospital: "Square Hospital",
-//       fee: 800,
-//       days: ["Mon", "Wed"],
-//       time: "বিকাল ৩টা - রাত ৮টা",
-//     },
-//   ]);
-// });
 
 app.get("/api/doctors", async (req, res) => {
   const data = await Doctor.find();
@@ -199,34 +213,91 @@ app.post("/api/hotel-book", async (req, res) => {
 });
 
 // TRANSPORT
+// // app.post("/api/transport-book", async (req, res) => {
+// //   try {
+// //     const { from, to, date, user } = req.body;
+
+// //     // 🔥 SIMPLE DISTANCE BASED FARE (demo logic)
+// //     let baseFare = 200;
+
+// //     if (from !== to) {
+// //       baseFare += 100; // different location charge
+// //     }
+
+// //     const total = baseFare;
+
+// //     const booking = new Booking({
+// //       type: "transport",
+// //       from,
+// //       to,
+// //       date,
+// //       total, // 🔥 save fare
+// //       user,
+// //     });
+
+// //     await booking.save();
+
+// //     res.json({
+// //       message: "Transport booked ✅",
+// //       total,
+// //     });
+// //   } catch (err) {
+// //     res.status(500).json({ message: "Transport booking failed ❌" });
+// //   }
+// // });
+
+// app.post("/api/transport-book", async (req, res) => {
+//   try {
+//     const { from, to } = req.body;
+
+//     const key = `${from}-${to}`;
+//     const reverseKey = `${to}-${from}`;
+
+//     let fare = fareMap[key] || fareMap[reverseKey] || null;
+
+//     const booking = new Booking({
+//       ...req.body,
+//       type: "transport",
+//       fare: fare, // ✅ save fare
+//     });
+
+//     await booking.save();
+
+//     res.json({
+//       message: "Transport booked ✅",
+//       fare: fare,
+//     });
+
+//   } catch (err) {
+//     res.status(500).json({ message: "Transport booking failed ❌" });
+//   }
+// });
+
 app.post("/api/transport-book", async (req, res) => {
   try {
-    const { from, to, date, user } = req.body;
+    const { from, to } = req.body;
 
-    // 🔥 SIMPLE DISTANCE BASED FARE (demo logic)
-    let baseFare = 200;
+    const match = fareList.find(
+      (f) =>
+        (f.from === from && f.to === to) ||
+        (f.from === to && f.to === from)
+    );
 
-    if (from !== to) {
-      baseFare += 100; // different location charge
-    }
-
-    const total = baseFare;
+    const fare = match ? match.fare : null;
 
     const booking = new Booking({
+      ...req.body,
       type: "transport",
-      from,
-      to,
-      date,
-      total, // 🔥 save fare
-      user,
+      fare,
     });
 
     await booking.save();
 
     res.json({
       message: "Transport booked ✅",
-      total,
+      fare,
     });
+
   } catch (err) {
     res.status(500).json({ message: "Transport booking failed ❌" });
   }
