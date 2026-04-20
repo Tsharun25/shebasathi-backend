@@ -9,13 +9,11 @@ const app = express();
 app.use(cors({ origin: "*" }));
 app.use(express.json());
 
-
 // ================= DB =================
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB connected ✅"))
   .catch((err) => console.log("DB ERROR:", err));
-
 
 // ================= MODELS =================
 const User = mongoose.model("User", {
@@ -58,12 +56,16 @@ const Booking = mongoose.model("Booking", {
   total: Number,
 });
 
+const Fare = mongoose.model("Fare", {
+  from: String,
+  to: String,
+  fare: Number,
+});
 
 // ================= ROOT =================
 app.get("/", (req, res) => {
   res.send("Server running ✅");
 });
-
 
 // ================= AUTH =================
 
@@ -116,13 +118,11 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-
 // ================= DOCTORS =================
 app.get("/api/doctors", async (req, res) => {
   const data = await Doctor.find();
   res.json(data);
 });
-
 
 // ================= BOOKING =================
 
@@ -141,7 +141,6 @@ app.post("/api/book", async (req, res) => {
     res.status(500).json({ message: "Booking failed ❌" });
   }
 });
-
 
 // HOTEL
 app.post("/api/hotel-book", async (req, res) => {
@@ -172,24 +171,17 @@ app.post("/api/hotel-book", async (req, res) => {
   }
 });
 
-
 // ================= TRANSPORT (FINAL FIX) =================
 app.post("/api/transport-book", async (req, res) => {
   try {
     const { from, to, date, user } = req.body;
 
-    const fareList = [
-      { from: "Dhaka", to: "Gazipur", fare: 500 },
-      { from: "Dhaka", to: "Rangpur", fare: 1200 },
-      { from: "Dhaka", to: "Chittagong", fare: 1500 },
-      { from: "Gazipur", to: "Dhaka", fare: 500 },
-    ];
-
-    const match = fareList.find(
-      (f) =>
-        (f.from === from && f.to === to) ||
-        (f.from === to && f.to === from)
-    );
+    const match = await Fare.findOne({
+      $or: [
+        { from, to },
+        { from: to, to: from }, // reverse support
+      ],
+    });
 
     const fare = match ? match.fare : null;
 
@@ -208,12 +200,36 @@ app.post("/api/transport-book", async (req, res) => {
       message: "Transport booked ✅",
       fare,
     });
-
-  } catch {
+  } catch (err) {
     res.status(500).json({ message: "Transport booking failed ❌" });
   }
 });
 
+// ADD FARE
+app.post("/api/admin/add-fare", async (req, res) => {
+  try {
+    const { from, to, fare } = req.body;
+
+    if (!from || !to || !fare) {
+      return res.json({ message: "সব তথ্য দিন" });
+    }
+
+    const exist = await Fare.findOne({ from, to });
+
+    if (exist) {
+      exist.fare = fare;
+      await exist.save();
+      return res.json({ message: "Fare updated ✅" });
+    }
+
+    const newFare = new Fare({ from, to, fare });
+    await newFare.save();
+
+    res.json({ message: "Fare added ✅" });
+  } catch {
+    res.status(500).json({ message: "Error ❌" });
+  }
+});
 
 // ================= MY BOOKINGS =================
 app.get("/api/my-bookings/:user", async (req, res) => {
@@ -224,7 +240,6 @@ app.get("/api/my-bookings/:user", async (req, res) => {
     res.json([]);
   }
 });
-
 
 // ================= STATIC LIST =================
 app.get("/api/transport", (req, res) => {
@@ -241,6 +256,10 @@ app.get("/api/hotel", (req, res) => {
   ]);
 });
 
+app.get("/api/admin/fares", async (req, res) => {
+  const data = await Fare.find();
+  res.json(data);
+});
 
 // ================= ADMIN =================
 
@@ -268,7 +287,6 @@ app.delete("/api/admin/delete-booking/:id", async (req, res) => {
   await Booking.findByIdAndDelete(req.params.id);
   res.json({ message: "Deleted" });
 });
-
 
 // ================= OTP =================
 const otpStore = {};
@@ -310,12 +328,10 @@ app.post("/api/verify-otp", async (req, res) => {
   });
 });
 
-
 // ================= START =================
 app.listen(process.env.PORT || 5000, () => {
   console.log("Server running on port 5000 🚀");
 });
-
 
 // import express from "express";
 // import mongoose from "mongoose";
@@ -332,7 +348,6 @@ app.listen(process.env.PORT || 5000, () => {
 // );
 // app.use(express.json());
 
-
 // const fareMap = {
 //   "Dhaka-Gazipur": 500,
 //   "Dhaka-Rangpur": 1200,
@@ -345,8 +360,6 @@ app.listen(process.env.PORT || 5000, () => {
 //   { from: "Dhaka", to: "Gazipur", fare: 500 },
 //   { from: "Dhaka", to: "Rangpur", fare: 1200 },
 // ];
-
-
 
 // // ================= DB =================
 // mongoose
@@ -363,7 +376,6 @@ app.listen(process.env.PORT || 5000, () => {
 //   role: { type: String, default: "user" }, // ✅ NEW
 // });
 
-
 // const Doctor = mongoose.model("Doctor", {
 //   name: String,
 //   specialist: String,
@@ -375,7 +387,6 @@ app.listen(process.env.PORT || 5000, () => {
 //     end: String,
 //   },
 // });
-
 
 // const Booking = mongoose.model("Booking", {
 //   doctor: String,
@@ -450,7 +461,6 @@ app.listen(process.env.PORT || 5000, () => {
 
 // // ================= DOCTORS =================
 
-
 // app.get("/api/doctors", async (req, res) => {
 //   const data = await Doctor.find();
 //   res.json(data);
@@ -502,7 +512,6 @@ app.listen(process.env.PORT || 5000, () => {
 // });
 
 // // TRANSPORT
-
 
 // // ================= MY BOOKINGS =================
 
@@ -594,7 +603,6 @@ app.listen(process.env.PORT || 5000, () => {
 //   });
 // });
 
-
 // // ================= ADMIN =================
 
 // // ALL USERS
@@ -623,12 +631,10 @@ app.listen(process.env.PORT || 5000, () => {
 //   next();
 // };
 
-
 // app.delete("/api/admin/delete-booking/:id", async (req, res) => {
 //   await Booking.findByIdAndDelete(req.params.id);
 //   res.json({ message: "Deleted" });
 // });
-
 
 // const fares = {
 //   "Dhaka-Gazipur": 300,
