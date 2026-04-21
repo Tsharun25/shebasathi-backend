@@ -9,6 +9,13 @@ const app = express();
 app.use(cors({ origin: "*" }));
 app.use(express.json());
 
+const adminOnly = (req, res, next) => {
+  if (req.body.role !== "admin") {
+    return res.status(403).json({ message: "Access denied" });
+  }
+  next();
+};
+
 // ================= DB =================
 mongoose
   .connect(process.env.MONGO_URI)
@@ -171,17 +178,17 @@ app.post("/api/hotel-book", async (req, res) => {
   }
 });
 
-
-// ================= TRANSPORT (FINAL FIX) =================
+// ================= TRANSPORT (FIXED) =================
 app.post("/api/transport-book", async (req, res) => {
   try {
     const { from, to } = req.body;
 
-    const match = fareList.find(
-      (f) =>
-        (f.from === from && f.to === to) ||
-        (f.from === to && f.to === from)
-    );
+    const match = await Fare.findOne({
+      $or: [
+        { from, to },
+        { from: to, to: from },
+      ],
+    });
 
     const fare = match ? match.fare : null;
 
@@ -197,8 +204,7 @@ app.post("/api/transport-book", async (req, res) => {
       message: "Transport booked ✅",
       fare,
     });
-
-  } catch (err) {
+  } catch {
     res.status(500).json({ message: "Transport booking failed ❌" });
   }
 });
@@ -326,8 +332,8 @@ app.post("/api/verify-otp", async (req, res) => {
   });
 });
 
+
 // ================= START =================
 app.listen(process.env.PORT || 5000, () => {
   console.log("Server running on port 5000 🚀");
 });
-
