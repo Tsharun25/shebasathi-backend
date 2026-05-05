@@ -124,7 +124,7 @@ const bookingSchema = new mongoose.Schema(
     total: Number,
     rooms: Number,
 
-    isNew: { type: Boolean, default: true },
+    isUnread: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
@@ -565,7 +565,7 @@ app.get("/api/transport", (req, res) => {
 // ================= ADMIN BASIC =================
 app.get("/api/admin/new-bookings-count", adminOnly, async (req, res) => {
   try {
-    const count = await Booking.countDocuments({ isNew: true });
+    const count = await Booking.countDocuments({ isUnread: true });
     res.json({ count });
   } catch {
     res.status(500).json({ count: 0 });
@@ -574,7 +574,7 @@ app.get("/api/admin/new-bookings-count", adminOnly, async (req, res) => {
 
 app.post("/api/admin/mark-seen", adminOnly, async (req, res) => {
   try {
-    await Booking.updateMany({ isNew: true }, { isNew: false });
+    await Booking.updateMany({ isUnread: true }, { isUnread: false });
     res.json({ message: "Updated ✅" });
   } catch {
     res.status(500).json({ message: "Failed ❌" });
