@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import { installPhoneAuth, canonicalPhone, phoneAliases } from "./phone-auth.js";
 
 dotenv.config();
 
@@ -54,6 +55,9 @@ const userSchema = new mongoose.Schema(
     phone: { type: String, trim: true, unique: true, sparse: true },
     email: { type: String, trim: true, lowercase: true, unique: true, sparse: true },
     password: { type: String },
+    authVersion: { type: Number, default: 0 },
+    emailResetHash: { type: String, select: false },
+    emailResetExpiresAt: { type: Date, select: false },
     role: { type: String, enum: ["user", "admin"], default: "user" },
   },
   { timestamps: true }
@@ -158,6 +162,7 @@ const makeToken = (user) => {
       phone: user.phone,
       email: user.email,
       role: user.role || "user",
+      authVersion: user.authVersion || 0,
     },
     JWT_SECRET,
     { expiresIn: "7d" }
@@ -179,7 +184,7 @@ const generateBookingId = async () => {
 
 const normalizePhone = (phone) => {
   if (!phone) return null;
-  return String(phone).trim();
+  return canonicalPhone(phone) || String(phone).trim();
 };
 
 const normalizeEmail = (email) => {
@@ -201,7 +206,7 @@ const requireAuth = async (req, res, next) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     const dbUser = await User.findById(decoded.id).select("-password");
 
-    if (!dbUser) {
+    if (!dbUser || (decoded.authVersion || 0) !== (dbUser.authVersion || 0)) {
       return res.status(401).json({ message: "User not found ❌" });
     }
 
@@ -239,6 +244,8 @@ app.get("/api/health", (req, res) => {
 });
 
 // ================= AUTH =================
+installPhoneAuth({ app, mongoose, User, makeToken });
+
 app.post("/api/register", async (req, res) => {
   try {
     let { name, phone, email, password } = req.body;
@@ -269,8 +276,8 @@ app.post("/api/register", async (req, res) => {
 
     const user = new User({
       name,
-      phone,
-      email,
+      ...(phone ? { phone } : {}),
+      ...(email ? { email } : {}),
       password: hashedPassword,
       role: "user",
     });
@@ -298,7 +305,7 @@ app.post("/api/login", async (req, res) => {
 
     let user = null;
 
-    if (phone) user = await User.findOne({ phone });
+    if (phone) user = await User.findOne({ phone: { $in: phoneAliases(phone) } });
     if (!user && email) user = await User.findOne({ email });
 
     if (!user) {
