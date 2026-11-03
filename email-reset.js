@@ -5,20 +5,36 @@ import bcrypt from "bcryptjs";
 export const hashResetToken = (token) => createHash("sha256").update(token).digest("hex");
 
 export function emailSettings() {
+  const provider = process.env.EMAIL_PROVIDER || "smtp";
   const { SMTP_HOST: host, SMTP_USER: user, SMTP_PASS: pass, SMTP_FROM: from, FRONTEND_URL: frontend } = process.env;
   const port = Number(process.env.SMTP_PORT || 587);
   let url;
   try { url = new URL(frontend); } catch { /* checked below */ }
-  if (!host || !user || !pass || !from || !Number.isInteger(port) || port < 1 || port > 65535 || !url || url.username || url.password ||
+  const apiKey = process.env.RESEND_API_KEY;
+  const sender = provider === "resend" ? process.env.EMAIL_FROM : from;
+  const configured = provider === "resend" ? !!(apiKey && sender) : provider === "smtp" && !!(host && user && pass && from && Number.isInteger(port) && port > 0 && port <= 65535);
+  if (!configured || !url || url.username || url.password ||
       (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname)))) {
     const error = new Error("ইমেইল রিসেট সেবা এখনো চালু হয়নি। পরে চেষ্টা করুন।");
     error.status = 503; throw error;
   }
-  return { host, port, user, pass, from, origin: url.origin };
+  return { provider, apiKey, host, port, user, pass, from: sender, origin: url.origin };
 }
 
-export async function sendResetEmail({ email, token }) {
+export async function sendResetEmail({ email, token }, request = fetch) {
   const settings = emailSettings();
+  const link = `${settings.origin}/reset-password#token=${token}`;
+  const subject = "ShebaSathi — পাসওয়ার্ড রিসেট";
+  const text = `আপনার পাসওয়ার্ড বদলাতে এই লিংক খুলুন:\n${link}\n\nলিংকটি ১৫ মিনিটের মধ্যে একবার ব্যবহার করা যাবে। আপনি অনুরোধ না করলে এই ইমেইল উপেক্ষা করুন।`;
+  if (settings.provider === "resend") {
+    const response = await request("https://api.resend.com/emails", {
+      method: "POST", headers: { Authorization: `Bearer ${settings.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: settings.from, to: [email], subject, text }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) throw new Error("Email delivery failed");
+    return;
+  }
   const transport = nodemailer.createTransport({ host: settings.host, port: settings.port,
     secure: settings.port === 465, requireTLS: settings.port !== 465,
     auth: { user: settings.user, pass: settings.pass },
@@ -26,10 +42,8 @@ export async function sendResetEmail({ email, token }) {
     disableFileAccess: true, disableUrlAccess: true,
   });
   // A fragment keeps the secret out of page requests and Referer headers.
-  const link = `${settings.origin}/reset-password#token=${token}`;
   await transport.sendMail({ from: settings.from, to: { address: email },
-    subject: "ShebaSathi — পাসওয়ার্ড রিসেট",
-    text: `আপনার পাসওয়ার্ড বদলাতে এই লিংক খুলুন:\n${link}\n\nলিংকটি ১৫ মিনিটের মধ্যে একবার ব্যবহার করা যাবে। আপনি অনুরোধ না করলে এই ইমেইল উপেক্ষা করুন।`,
+    subject, text,
   });
 }
 

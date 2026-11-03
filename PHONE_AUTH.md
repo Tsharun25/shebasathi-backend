@@ -6,6 +6,27 @@ The recovery page offers SMS OTP and email reset links for users and admins. SMS
 
 ## Enable email reset links
 
+### Render Free (HTTPS delivery)
+
+Render Free blocks outbound SMTP ports 25, 465, and 587. Use the Resend HTTPS adapter instead. Create a Resend account, verify a domain you control by adding its required DNS records, then create a sending API key. The default resend.dev sender only sends test messages to the account owner's email; it cannot deliver resets to arbitrary users.
+
+In Render Dashboard, open the backend service, select Environment, and set:
+
+```env
+EMAIL_PROVIDER=resend
+RESEND_API_KEY=your-secret-api-key
+EMAIL_FROM=ShebaSathi <noreply@your-verified-domain.com>
+FRONTEND_URL=https://shebasathi-next.vercel.app
+```
+
+Save and redeploy. Keep keys in Render's secret environment configuration, never in GitHub or chat. SMTP settings are not needed in this mode. Users can register with their own Gmail or another email address; the sender uses the verified service domain. No Gmail App Password is needed for recipients.
+
+Test by registering a dedicated user with an inbox you own, choosing email recovery, opening the received link, setting a new password, and verifying that the old password and reused link fail. Real delivery is pending until the owner configures the email service and completes this check.
+
+References: https://render.com/docs/free#other-limitations and https://resend.com/docs/knowledge-base/403-error-resend-dev-domain
+
+### SMTP (local or compatible hosting)
+
 Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and `SMTP_FROM` on the backend using your email provider's SMTP settings. Port 465 uses TLS immediately; other ports require STARTTLS. Set `FRONTEND_URL` to the trusted frontend origin (HTTPS in production; `http://localhost:3000` for local development). Links never use the incoming Host header. Restart/redeploy the backend and deploy the frontend.
 
 `POST /api/forgot-password/email` accepts `{ email }`. For a registered email, it sends a `/reset-password#token=...` link. `POST /api/reset-password/email` accepts `{ token, password }`. Tokens contain 32 cryptographically random bytes, are stored only as SHA-256 hashes on the user, expire after 15 minutes, and are atomically consumed when changing the password. Only the latest link works. SMS resets also clear outstanding email reset tokens. The role stays unchanged.

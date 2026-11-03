@@ -250,6 +250,11 @@ app.post("/api/register", async (req, res) => {
   try {
     let { name, phone, email, password } = req.body;
 
+    if (email !== undefined && email !== null && (typeof email !== "string" ||
+        (email.trim() && (email.trim().length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))))) {
+      return res.status(400).json({ message: "সঠিক ইমেইল ঠিকানা দিন, যাতে পাসওয়ার্ড রিসেটের লিংক পেতে পারেন।" });
+    }
+
     name = name?.trim();
     phone = normalizePhone(phone);
     email = normalizeEmail(email);

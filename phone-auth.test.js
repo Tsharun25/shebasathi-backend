@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import express from "express";
 import bcrypt from "bcryptjs";
 import { canonicalPhone, installPhoneAuth, verifyRequest } from "./phone-auth.js";
-import { hashResetToken, emailSettings } from "./email-reset.js";
+import { hashResetToken, emailSettings, sendResetEmail } from "./email-reset.js";
 
 // In-memory persistence substitute; no production database or SMS is contacted.
 function model() {
@@ -165,4 +165,27 @@ test("SMS reset also invalidates an outstanding email reset link", async (t) => 
 });
 test("email service fails closed without SMTP configuration", () => {
   assert.throws(() => emailSettings(), (error) => error.status === 503);
+});
+
+test("Render-compatible HTTPS adapter sends a reset link and rejects provider failures", async () => {
+  const names = ["EMAIL_PROVIDER", "RESEND_API_KEY", "EMAIL_FROM", "FRONTEND_URL"];
+  const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+  Object.assign(process.env, { EMAIL_PROVIDER: "resend", RESEND_API_KEY: "test-key",
+    EMAIL_FROM: "ShebaSathi <noreply@example.com>", FRONTEND_URL: "https://shebasathi-next.vercel.app" });
+  try {
+    let request;
+    const token = "a".repeat(64);
+    await sendResetEmail({ email: "user@gmail.com", token }, async (url, options) => {
+      request = { url, options }; return { ok: true };
+    });
+    assert.equal(request.url, "https://api.resend.com/emails");
+    const message = JSON.parse(request.options.body);
+    assert.deepEqual(message.to, ["user@gmail.com"]);
+    assert.ok(message.text.includes(`https://shebasathi-next.vercel.app/reset-password#token=${token}`));
+    await assert.rejects(sendResetEmail({ email: "user@gmail.com", token }, async () => ({ ok: false })), /Email delivery failed/);
+    process.env.FRONTEND_URL = "https://attacker:secret@example.com";
+    assert.throws(() => emailSettings(), (error) => error.status === 503);
+  } finally {
+    for (const name of names) { if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name]; }
+  }
 });
